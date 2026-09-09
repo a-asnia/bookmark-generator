@@ -73,6 +73,18 @@ export interface FreeSettings {
   thickness: number;
 }
 
+export type BackingShape = 'frame' | 'silhouette' | 'plate';
+
+/** Solid plate under the picture so the lines print as relief on a base. */
+export interface BackingSettings {
+  enabled: boolean;
+  shape: BackingShape;
+  thickness: number;
+  /** Margin around the picture for the 'plate' shape, mm. */
+  margin: number;
+  cornerRadius: number;
+}
+
 export interface StandSettings {
   enabled: boolean;
   width: number;
@@ -87,6 +99,7 @@ export interface ColorSettings {
   base: number; // extruder index (0-based) for frame / holder / stand
   image: number;
   relief: number;
+  backing: number;
 }
 
 export interface Project {
@@ -100,6 +113,7 @@ export interface Project {
   holder: HolderSettings;
   free: FreeSettings;
   stand: StandSettings;
+  backing: BackingSettings;
   colors: ColorSettings;
   printerId: string;
 }
@@ -223,7 +237,8 @@ export function defaultProject(): Project {
     },
     free: { width: 100, thickness: 1.5 },
     stand: { enabled: false, width: 60, depth: 20, height: 8, slotDepth: 5, clearance: 0.3 },
-    colors: { palette: DEFAULT_PALETTE.slice(), base: 0, image: 1, relief: 2 },
+    backing: { enabled: false, shape: 'frame', thickness: 0.8, margin: 2, cornerRadius: 3 },
+    colors: { palette: DEFAULT_PALETTE.slice(), base: 0, image: 1, relief: 2, backing: 3 },
     printerId: 'a1mini',
   };
 }
@@ -245,6 +260,7 @@ export function loadProject(): Project {
       holder: { ...base.holder, ...(saved.holder ?? {}) },
       free: { ...base.free, ...(saved.free ?? {}) },
       stand: { ...base.stand, ...(saved.stand ?? {}) },
+      backing: { ...base.backing, ...(saved.backing ?? {}) },
       colors: { ...base.colors, ...(saved.colors ?? {}) },
       edits: [],
     };

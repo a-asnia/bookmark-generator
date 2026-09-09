@@ -5,7 +5,7 @@ import type { Assembly } from '../model/pipeline';
 import { nearestVertex } from '../model/pipeline';
 import type { Edit } from '../model/state';
 
-export type Tool = 'pan' | 'fill' | 'delete' | 'paint' | 'erase' | 'move' | 'round';
+export type Tool = 'pan' | 'place' | 'fill' | 'delete' | 'paint' | 'erase' | 'move' | 'round';
 
 export interface Stage2DProps {
   assembly: Assembly;
@@ -17,6 +17,8 @@ export interface Stage2DProps {
   showVertices: boolean;
   showBase: boolean;
   onEdit: (e: Edit) => void;
+  /** Drag the whole picture: delta in mm. */
+  onPlace: (dx: number, dy: number) => void;
   fitToken: number;
 }
 
@@ -41,11 +43,11 @@ export function pathOf(mp: MultiPoly): string {
 }
 
 export function Stage2D(props: Stage2DProps) {
-  const { assembly, picturePx, tool, brushMm, roundRadiusMm, showVertices, showBase, onEdit, fitToken } = props;
+  const { assembly, picturePx, tool, brushMm, roundRadiusMm, showVertices, showBase, onEdit, onPlace, fitToken } = props;
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ scale: 0.25, cx: 0, cy: 0 });
-  const drag = useRef<{ kind: 'pan' | 'brush' | 'move'; last: Pt; pts: Pt[]; fromMm?: Pt; fromPx?: Pt } | null>(null);
+  const drag = useRef<{ kind: 'pan' | 'brush' | 'move' | 'place'; last: Pt; pts: Pt[]; fromMm?: Pt; fromPx?: Pt } | null>(null);
   const [live, setLive] = useState<{ pts: Pt[]; kind: 'paint' | 'erase' } | { kind: 'move'; from: Pt; to: Pt } | null>(null);
   const [hover, setHover] = useState<Pt | null>(null);
 
@@ -125,6 +127,10 @@ export function Stage2D(props: Stage2DProps) {
       drag.current = { kind: 'pan', last: s, pts: [] };
       return;
     }
+    if (tool === 'place') {
+      drag.current = { kind: 'place', last: s, pts: [] };
+      return;
+    }
     const px = placed.toPx(mm);
     if (tool === 'paint' || tool === 'erase') {
       drag.current = { kind: 'brush', last: s, pts: [px] };
@@ -169,6 +175,9 @@ export function Stage2D(props: Stage2DProps) {
     if (d.kind === 'pan') {
       setView((v) => ({ ...v, cx: v.cx - (s[0] - d.last[0]) * v.scale, cy: v.cy + (s[1] - d.last[1]) * v.scale }));
       d.last = s;
+    } else if (d.kind === 'place') {
+      onPlace((s[0] - d.last[0]) * view.scale, -(s[1] - d.last[1]) * view.scale);
+      d.last = s;
     } else if (d.kind === 'brush' && placed) {
       d.pts.push(placed.toPx(mm));
       setLive((l) => (l && l.kind !== 'move' ? { ...l, pts: [...l.pts, mm] } : l));
@@ -204,7 +213,7 @@ export function Stage2D(props: Stage2DProps) {
     return pts;
   }, [placed, picturePx, showVertices, tool, view.scale]);
 
-  const cursor = tool === 'pan' ? 'stage-cursor--grab' : tool === 'move' || tool === 'round' ? 'stage-cursor--pointer' : 'stage-cursor--crosshair';
+  const cursor = tool === 'pan' || tool === 'place' ? 'stage-cursor--grab' : tool === 'move' || tool === 'round' ? 'stage-cursor--pointer' : 'stage-cursor--crosshair';
   const parts = assembly.objects.flatMap((o) => o.parts.map((p) => ({ part: p, off: o.offset })));
   const fb = assembly.fitBox;
   const strokeW = view.scale * 1.2;
@@ -228,7 +237,7 @@ export function Stage2D(props: Stage2DProps) {
                 transform={`translate(${off[0]} ${off[1]})`}
                 fill={part.color}
                 fillRule="evenodd"
-                fillOpacity={part.role === 'base' ? 0.55 : part.role === 'relief' ? 0.9 : 0.92}
+                fillOpacity={part.role === 'base' ? 0.55 : part.role === 'backing' ? 0.35 : part.role === 'relief' ? 0.9 : 0.92}
                 stroke={part.role === 'image' ? 'var(--ink)' : 'none'}
                 strokeWidth={strokeW * 0.6}
                 strokeOpacity="0.5"

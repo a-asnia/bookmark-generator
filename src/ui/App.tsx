@@ -6,7 +6,7 @@ import { boxH, boxW, type MultiPoly } from '../geom/types';
 import { detectLang, makeT, type Lang } from '../i18n';
 import { loadSourceImage } from '../model/image';
 import { applyPointEdits, applyVectorEdits, assemble, buildMask, pictureBox, traceToPolys, type Assembly, type PictureInput } from '../model/pipeline';
-import { defaultProject, loadProject, PRINTERS, saveProject, type Edit, type Mode, type Project, type SourceImage, type Style } from '../model/state';
+import { defaultProject, loadProject, PRINTERS, saveProject, type BackingShape, type Edit, type Mode, type Project, type SourceImage, type Style } from '../model/state';
 import { Button, Callout, Field, Icon, Section, Seg, Slider, Toggle } from './controls';
 import { FrameIcon, HolderIcon, TypeIcon } from './icons';
 import { Stage2D, type Tool } from './Stage2D';
@@ -23,7 +23,7 @@ export function App() {
   const [source, setSource] = useState<SourceImage | null>(null);
   const [step, setStep] = useState<Step>('picture');
   const [view, setView] = useState<'2d' | '3d'>('2d');
-  const [tool, setTool] = useState<Tool>('pan');
+  const [tool, setTool] = useState<Tool>('place');
   const [brushMm, setBrushMm] = useState(1.2);
   const [roundMm, setRoundMm] = useState(1.5);
   const [showVertices, setShowVertices] = useState(false);
@@ -170,6 +170,11 @@ export function App() {
   };
 
   const addEdit = useCallback((e: Edit) => update((p) => ({ ...p, edits: [...p.edits, e] })), [update]);
+  const onPlace = useCallback(
+    (dx: number, dy: number) =>
+      update((p) => ({ ...p, placement: { ...p.placement, dx: Math.round((p.placement.dx + dx) * 10) / 10, dy: Math.round((p.placement.dy + dy) * 10) / 10 } })),
+    [update],
+  );
   const fileInput = useRef<HTMLInputElement>(null);
 
   const unit = t('unit.mm');
@@ -371,6 +376,7 @@ export function App() {
         </Section>
       )}
       <Section title={t('place.title')}>
+        <div className="hint">{t('place.dragHint')}</div>
         <Slider label={t('place.scale')} value={Math.round(project.placement.scale * 100)} min={10} max={300} unit={t('unit.pct')} onChange={(v) => set('placement', { scale: v / 100 })} />
         <Slider label={t('place.dx')} value={project.placement.dx} min={-100} max={100} step={0.5} unit={unit} onChange={(v) => set('placement', { dx: v })} />
         <Slider label={t('place.dy')} value={project.placement.dy} min={-100} max={100} step={0.5} unit={unit} onChange={(v) => set('placement', { dy: v })} />
@@ -391,7 +397,7 @@ export function App() {
     { value: 'silhouette', title: t('style.silhouette'), desc: t('style.silhouetteDesc') },
     { value: 'relief', title: t('style.relief'), desc: t('style.reliefDesc') },
   ];
-  const colorSlot = (label: string, key: 'base' | 'image' | 'relief') => (
+  const colorSlot = (label: string, key: 'base' | 'image' | 'relief' | 'backing') => (
     <Field label={label}>
       <div className="swatches">
         {project.colors.palette.map((c, i) => (
@@ -411,6 +417,29 @@ export function App() {
           </div>
         </button>
       ))}
+      <Section title={t('backing.title')}>
+        <Toggle label={t('backing.enabled')} hint={t('backing.hint')} value={project.backing.enabled} onChange={(v) => set('backing', { enabled: v })} />
+        {project.backing.enabled && (
+          <>
+            <Seg<BackingShape>
+              value={project.mode !== 'frame' && project.backing.shape === 'frame' ? 'plate' : project.backing.shape}
+              options={[
+                ...(project.mode === 'frame' ? [{ value: 'frame' as BackingShape, label: t('backing.shape.frame') }] : []),
+                { value: 'plate', label: t('backing.shape.plate') },
+                { value: 'silhouette', label: t('backing.shape.silhouette') },
+              ]}
+              onChange={(v) => set('backing', { shape: v })}
+            />
+            <Slider label={t('backing.thickness')} value={project.backing.thickness} min={0.2} max={4} step={0.1} unit={unit} onChange={(v) => set('backing', { thickness: v })} />
+            {project.backing.shape === 'plate' && (
+              <>
+                <Slider label={t('backing.margin')} value={project.backing.margin} min={0} max={20} step={0.5} unit={unit} onChange={(v) => set('backing', { margin: v })} />
+                <Slider label={t('backing.cornerRadius')} value={project.backing.cornerRadius} min={0} max={20} step={0.5} unit={unit} onChange={(v) => set('backing', { cornerRadius: v })} />
+              </>
+            )}
+          </>
+        )}
+      </Section>
       {project.style === 'relief' && <Slider label={t('style.reliefHeight')} value={project.reliefHeight} min={0.2} max={3} step={0.1} unit={unit} onChange={(v) => update({ reliefHeight: v })} />}
       <Section title={t('style.colors')}>
         <div className="palette">
@@ -433,12 +462,14 @@ export function App() {
         </div>
         {project.mode !== 'free' && colorSlot(t('style.colorBase'), 'base')}
         {colorSlot(t('style.colorImage'), 'image')}
+        {project.backing.enabled && colorSlot(t('style.colorBacking'), 'backing')}
         {project.style === 'relief' && colorSlot(t('style.colorRelief'), 'relief')}
       </Section>
     </>
   );
 
   const tools: { id: Tool; label: string; icon: ReactElement }[] = [
+    { id: 'place', label: t('edit.tool.place'), icon: Icon.move },
     { id: 'pan', label: t('edit.tool.pan'), icon: Icon.pan },
     { id: 'fill', label: t('edit.tool.fill'), icon: Icon.fill },
     { id: 'delete', label: t('edit.tool.delete'), icon: Icon.del },
@@ -578,7 +609,7 @@ export function App() {
             {assembly.warnings.length > 0 && <span className="badge" style={{ color: 'var(--warn)', borderColor: 'var(--warn)' }}>{assembly.warnings[0]}</span>}
           </div>
           {view === '2d' ? (
-            <Stage2D assembly={assembly} picturePx={picturePx ?? []} tool={source ? tool : 'pan'} brushMm={brushMm} roundRadiusMm={roundMm} showVertices={showVertices} showBase={showBase} onEdit={addEdit} fitToken={fitToken} />
+            <Stage2D assembly={assembly} picturePx={picturePx ?? []} tool={source ? tool : 'pan'} brushMm={brushMm} roundRadiusMm={roundMm} showVertices={showVertices} showBase={showBase} onEdit={addEdit} onPlace={onPlace} fitToken={fitToken} />
           ) : (
             <Stage3D assembly={assembly} bed={printer.bed} />
           )}

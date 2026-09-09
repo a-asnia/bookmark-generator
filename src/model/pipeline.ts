@@ -9,7 +9,7 @@ import {
   type Mask,
 } from '../geom/bitmap';
 import { extrude, type Mesh } from '../geom/extrude';
-import { difference, dropSmall, filletVertex, intersection, normalize, rect, union } from '../geom/ops';
+import { difference, dropSmall, filletVertex, intersection, normalize, rect, roundedRect, union } from '../geom/ops';
 import { frameGeometry, holderShape, standProfile, type FrameParams } from '../geom/shapes';
 import { ringsToMulti, simplifyRing, traceMask } from '../geom/trace';
 import {
@@ -174,7 +174,7 @@ export interface Part {
   color: string;
   mesh: Mesh;
   /** Which editor role this part plays. */
-  role: 'base' | 'image' | 'relief' | 'stand';
+  role: 'base' | 'image' | 'relief' | 'stand' | 'backing';
 }
 
 export interface ExportObject {
@@ -197,6 +197,20 @@ export interface Assembly {
   fitBox: Box | null;
   /** Picture pieces dropped because they touch nothing (shown as ghosts in the editor). */
   floating: MultiPoly;
+}
+
+/** Backing plate footprint for the picture. `interior` is the frame interior when in frame mode. */
+export function backingShape(p: Project, picture: MultiPoly, interior: MultiPoly | null): MultiPoly {
+  const b = p.backing;
+  if (!b.enabled) return [];
+  const shape = b.shape === 'frame' && !interior ? 'plate' : b.shape;
+  if (shape === 'frame' && interior) return interior;
+  if (shape === 'silhouette') return silhouette(picture);
+  if (!picture.length) return [];
+  const bb = boxOf(picture);
+  let plate = roundedRect(bb.minX - b.margin, bb.minY - b.margin, boxW(bb) + 2 * b.margin, boxH(bb) + 2 * b.margin, b.cornerRadius);
+  if (interior) plate = intersection(plate, interior);
+  return plate;
 }
 
 export function silhouette(mp: MultiPoly): MultiPoly {
@@ -295,7 +309,8 @@ export function assemble(p: Project, pic: PictureInput | null, t: (k: string) =>
       placed = placePicture(pic.polyPx, pic.bboxPx, { w: boxW(ib), h: boxH(ib), cx: (ib.minX + ib.maxX) / 2, cy: (ib.minY + ib.maxY) / 2, anchor: 'center' }, p.placement);
       picture = placed.poly;
       if (p.frame.clipMode === 'clip') picture = intersection(picture, fg.inner);
-      const r = removeFloating(picture, fg.ring);
+      const support = p.backing.enabled ? union(fg.ring, backingShape(p, picture, fg.inner)) : fg.ring;
+      const r = removeFloating(picture, support);
       if (p.image.removeFloating) {
         floating = r.dropped;
         picture = r.kept;
@@ -303,10 +318,15 @@ export function assemble(p: Project, pic: PictureInput | null, t: (k: string) =>
       } else if (r.removed) warnings.push(t('warn.floating').replace('{n}', String(r.removed)));
     }
     const { body, relief } = stylize(picture);
+    const backing = backingShape(p, body, fg.inner);
     const ring = difference(fg.ring, body);
     parts.push(mkPart('frame', t('part.frame'), ring, 0, p.frame.thickness, p.colors.base, colorOf(p.colors.base), 'base'));
     imageZ0 = 0;
-    imageZ1 = p.frame.imageThickness;
+    if (backing.length) {
+      parts.push(mkPart('backing', t('part.backing'), difference(backing, fg.ring), 0, p.backing.thickness, p.colors.backing, colorOf(p.colors.backing), 'backing'));
+      imageZ0 = p.backing.thickness;
+    }
+    imageZ1 = imageZ0 + p.frame.imageThickness;
     if (body.length) parts.push(mkPart('image', t('part.picture'), body, imageZ0, imageZ1, p.colors.image, colorOf(p.colors.image), 'image'));
     if (relief.length) parts.push(mkPart('relief', t('part.relief'), relief, imageZ1, imageZ1 + p.reliefHeight, p.colors.relief, colorOf(p.colors.relief), 'relief'));
   } else if (p.mode === 'holder') {
@@ -318,7 +338,8 @@ export function assemble(p: Project, pic: PictureInput | null, t: (k: string) =>
       // Fit by width, but never let a tall drawing grow past ~1.3× the target width.
       placed = placePicture(pic.polyPx, pic.bboxPx, { w: targetW, h: targetW * 1.3, cx: 0, cy: -p.holder.overlap, anchor: 'bottom' }, p.placement);
       picture = placed.poly;
-      const r = removeFloating(picture, hs);
+      const support = p.backing.enabled ? union(hs, backingShape(p, picture, null)) : hs;
+      const r = removeFloating(picture, support);
       if (p.image.removeFloating) {
         floating = r.dropped;
         picture = r.kept;
@@ -326,10 +347,15 @@ export function assemble(p: Project, pic: PictureInput | null, t: (k: string) =>
       } else if (r.removed) warnings.push(t('warn.floating').replace('{n}', String(r.removed)));
     }
     const { body, relief } = stylize(picture);
-    const holder = difference(hs, body);
+    const backing = backingShape(p, body, null);
+    const holder = difference(hs, body, backing);
     parts.push(mkPart('holder', t('part.holder'), holder, 0, p.holder.thickness, p.colors.base, colorOf(p.colors.base), 'base'));
     imageZ0 = 0;
-    imageZ1 = p.holder.topperThickness;
+    if (backing.length) {
+      parts.push(mkPart('backing', t('part.backing'), backing, 0, p.backing.thickness, p.colors.backing, colorOf(p.colors.backing), 'backing'));
+      imageZ0 = p.backing.thickness;
+    }
+    imageZ1 = imageZ0 + p.holder.topperThickness;
     if (body.length) parts.push(mkPart('image', t('part.topper'), body, imageZ0, imageZ1, p.colors.image, colorOf(p.colors.image), 'image'));
     if (relief.length) parts.push(mkPart('relief', t('part.relief'), relief, imageZ1, imageZ1 + p.reliefHeight, p.colors.relief, colorOf(p.colors.relief), 'relief'));
   } else {
@@ -339,11 +365,16 @@ export function assemble(p: Project, pic: PictureInput | null, t: (k: string) =>
       picture = placed.poly;
     }
     const { body, relief } = stylize(picture);
+    const backing = backingShape(p, body, null);
     imageZ0 = 0;
-    imageZ1 = p.free.thickness;
+    if (backing.length) {
+      parts.push(mkPart('backing', t('part.backing'), backing, 0, p.backing.thickness, p.colors.backing, colorOf(p.colors.backing), 'backing'));
+      imageZ0 = p.backing.thickness;
+    }
+    imageZ1 = imageZ0 + p.free.thickness;
     if (body.length) parts.push(mkPart('image', t('part.picture'), body, imageZ0, imageZ1, p.colors.image, colorOf(p.colors.image), 'image'));
     if (relief.length) parts.push(mkPart('relief', t('part.relief'), relief, imageZ1, imageZ1 + p.reliefHeight, p.colors.relief, colorOf(p.colors.relief), 'relief'));
-    if (body.length > 1) warnings.push(t('warn.pieces').replace('{n}', String(body.length)));
+    if (body.length > 1 && !backing.length) warnings.push(t('warn.pieces').replace('{n}', String(body.length)));
   }
 
   // Filter degenerate slivers that would upset the slicer.
