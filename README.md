@@ -39,4 +39,4 @@ npm run dev
 npm run build
 ```
 
-Деплой на GitHub Pages идёт автоматически: при пуше в `main` workflow собирает сайт и кладёт его в ветку `gh-pages` (Settings → Pages → Source: Deploy from a branch, `gh-pages`).
+Деплой на GitHub Pages идёт автоматически при пуше в `main` (`.github/workflows/deploy.yml`, Settings → Pages → Source: GitHub Actions).
