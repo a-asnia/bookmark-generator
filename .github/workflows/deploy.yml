@@ -1,21 +1,23 @@
-name: Deploy to GitHub Pages
+name: Publish to a-asnia.github.io
+
+# Builds the app and copies dist/ into the bookmark-generator/ folder of the
+# user site repository. Needs a repository secret SITE_TOKEN: a fine-grained
+# personal access token with "Contents: Read and write" on a-asnia.github.io.
 
 on:
   push:
-    branches: [main, claude/bookmark-generator-pe9zn6]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: publish-site
   cancel-in-progress: true
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,15 +27,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+      - name: Copy build into a-asnia.github.io/bookmark-generator
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          personal_token: ${{ secrets.SITE_TOKEN }}
+          external_repository: a-asnia/a-asnia.github.io
+          publish_branch: main
+          publish_dir: ./dist
+          destination_dir: bookmark-generator
+          keep_files: false
+          commit_message: 'Update Bookmark Forge build'

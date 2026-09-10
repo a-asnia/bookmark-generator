@@ -39,4 +39,4 @@ npm run dev
 npm run build
 ```
 
-Деплой на GitHub Pages идёт автоматически при пуше в `main` (`.github/workflows/deploy.yml`, Settings → Pages → Source: GitHub Actions).
+Приложение живёт на сайте `a-asnia.github.io` в папке `bookmark-generator/`. При каждом пуше в `main` workflow `.github/workflows/deploy.yml` собирает проект и кладёт `dist/` в эту папку соседнего репозитория. Для этого в секретах репозитория должен быть `SITE_TOKEN`: fine-grained personal access token с правом Contents: Read and write на `a-asnia.github.io`.
