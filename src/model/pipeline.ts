@@ -11,7 +11,7 @@ import {
 import { extrude, type Mesh } from '../geom/extrude';
 import { difference, dropSmall, filletVertex, intersection, normalize, rect, roundedRect, union } from '../geom/ops';
 import { frameGeometry, holderShape, standProfile, type FrameParams } from '../geom/shapes';
-import { ringsToMulti, simplifyRing, traceMask } from '../geom/trace';
+import { ringsToMulti, simplifyRing, smoothRing, traceMask } from '../geom/trace';
 import {
   boxH,
   boxOf,
@@ -61,8 +61,21 @@ export function buildMask(src: SourceImage, p: Project, mmPerPx: number): Mask {
 // ---------------------------------------------------------------------------
 // Stage 2: vector (still in pixels, y down)
 
-export function traceToPolys(mask: Mask, smoothPx: number, minAreaPx: number): MultiPoly {
-  const rings = traceMask(mask).map((r) => simplifyRing(r, smoothPx));
+/**
+ * Trace and smooth. `smooth` is 0..1: 0 keeps the pixel outline (only the
+ * staircase is straightened), 1 rounds everything except sharp corners.
+ */
+export function traceToPolys(mask: Mask, smooth: number, minAreaPx: number): MultiPoly {
+  const s = Math.max(0, Math.min(1, smooth));
+  const tol = 0.45 + s * 1.2; // px, Douglas-Peucker before smoothing
+  const iterations = s < 0.15 ? 0 : s < 0.45 ? 1 : s < 0.75 ? 2 : 3;
+  const cornerDeg = 60 + s * 40; // 60..100°: stronger smoothing rounds blunter corners too
+  const rings = traceMask(mask).map((r) => {
+    let ring = simplifyRing(r, tol);
+    ring = smoothRing(ring, iterations, cornerDeg);
+    // Cull the extra points the subdivision produced.
+    return iterations ? simplifyRing(ring, 0.12) : ring;
+  });
   return ringsToMulti(rings, minAreaPx);
 }
 

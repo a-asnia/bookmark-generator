@@ -19,7 +19,7 @@ export interface ImageSettings {
   invert: boolean;
   /** Global line thickening, mm. */
   thicken: number;
-  /** Corner smoothing tolerance, mm. */
+  /** Outline smoothing strength, 0..1. */
   smooth: number;
   /** Drop specks smaller than this, mm². */
   despeckle: number;
@@ -201,7 +201,7 @@ export function defaultProject(): Project {
       useAlpha: true,
       invert: false,
       thicken: 0,
-      smooth: 0.15,
+      smooth: 0.6,
       despeckle: 0.5,
       removeFloating: true,
     },

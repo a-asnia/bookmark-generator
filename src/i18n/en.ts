@@ -26,7 +26,7 @@ export const en: Record<string, string> = {
   'picture.thicken': 'Thicken lines',
   'picture.thickenHint': 'Applied everywhere. For specific spots use the brush under “Edit”.',
   'picture.smooth': 'Smoothing',
-  'picture.smoothHint': 'Higher — softer outline, fewer triangles.',
+  'picture.smoothHint': 'Rounds the outline while keeping sharp corners sharp. Higher — softer lines, fewer triangles.',
   'picture.despeckle': 'Remove specks',
   'picture.despeckleHint': 'Drops crumbs smaller than this area.',
   'picture.removeFloating': 'Drop floating pieces',

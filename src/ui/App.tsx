@@ -130,9 +130,8 @@ export function App() {
 
   const traced = useMemo(() => {
     if (!mask) return null;
-    const smoothPx = deferred.image.smooth / mmPerPxGuess;
     const minAreaPx = 0.2 / (mmPerPxGuess * mmPerPxGuess);
-    return traceToPolys(mask, Math.min(smoothPx, 6), minAreaPx);
+    return traceToPolys(mask, deferred.image.smooth, minAreaPx);
   }, [mask, deferred.image.smooth, mmPerPxGuess]);
 
   const picturePx: MultiPoly | null = useMemo(() => {
@@ -244,7 +243,7 @@ export function App() {
       </Section>
       <Section title={t('picture.thicken')}>
         <Slider label={t('picture.thicken')} value={project.image.thicken} min={0} max={3} step={0.1} unit={unit} hint={t('picture.thickenHint')} onChange={(v) => set('image', { thicken: v })} />
-        <Slider label={t('picture.smooth')} value={project.image.smooth} min={0} max={1} step={0.05} unit={unit} hint={t('picture.smoothHint')} onChange={(v) => set('image', { smooth: v })} />
+        <Slider label={t('picture.smooth')} value={Math.round(project.image.smooth * 100)} min={0} max={100} unit={t('unit.pct')} hint={t('picture.smoothHint')} onChange={(v) => set('image', { smooth: v / 100 })} />
         <Slider label={t('picture.despeckle')} value={project.image.despeckle} min={0} max={10} step={0.1} unit={t('unit.mm2')} hint={t('picture.despeckleHint')} onChange={(v) => set('image', { despeckle: v })} />
       </Section>
       <div className="faq">

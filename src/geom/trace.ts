@@ -131,6 +131,46 @@ function dp(pts: Pt[], tol: number): Pt[] {
   return out;
 }
 
+/**
+ * Corner-preserving Chaikin smoothing. Vertices whose turn is sharper than
+ * cornerDeg stay put (intended corners), everything else gets rounded by
+ * corner cutting. Each iteration roughly doubles the point count, so callers
+ * should simplify afterwards.
+ */
+export function smoothRing(ring: Ring, iterations: number, cornerDeg = 70): Ring {
+  if (iterations <= 0 || ring.length < 6) return ring;
+  let pts = ring;
+  const cosLimit = Math.cos(((180 - cornerDeg) * Math.PI) / 180);
+  for (let it = 0; it < iterations; it++) {
+    const n = pts.length;
+    const corner = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[(i - 1 + n) % n];
+      const p = pts[i];
+      const b = pts[(i + 1) % n];
+      const ux = a[0] - p[0];
+      const uy = a[1] - p[1];
+      const vx = b[0] - p[0];
+      const vy = b[1] - p[1];
+      const lu = Math.hypot(ux, uy) || 1;
+      const lv = Math.hypot(vx, vy) || 1;
+      const cos = (ux * vx + uy * vy) / (lu * lv);
+      // cos of the interior angle; a straight line gives -1, a sharp spike gives +1.
+      if (cos > cosLimit) corner[i] = 1;
+    }
+    const out: Ring = [];
+    for (let i = 0; i < n; i++) {
+      const p = pts[i];
+      const q = pts[(i + 1) % n];
+      if (corner[i]) out.push(p);
+      else out.push([0.75 * p[0] + 0.25 * q[0], 0.75 * p[1] + 0.25 * q[1]]);
+      if (!corner[(i + 1) % n]) out.push([0.25 * p[0] + 0.75 * q[0], 0.25 * p[1] + 0.75 * q[1]]);
+    }
+    pts = out;
+  }
+  return pts;
+}
+
 /** Group rings into polygons: each hole goes to the smallest outer ring containing it. */
 export function ringsToMulti(rings: Ring[], minArea = 0): MultiPoly {
   const outers: { ring: Ring; area: number }[] = [];

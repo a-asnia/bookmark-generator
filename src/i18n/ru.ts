@@ -26,7 +26,7 @@ export const ru: Record<string, string> = {
   'picture.thicken': 'Утолщить линии',
   'picture.thickenHint': 'Одинаково по всей картинке. Для отдельных мест есть кисть в «Правке».',
   'picture.smooth': 'Сглаживание',
-  'picture.smoothHint': 'Больше — мягче контур и меньше треугольников.',
+  'picture.smoothHint': 'Скругляет контур, острые углы остаются острыми. Больше — мягче линии и меньше треугольников.',
   'picture.despeckle': 'Убрать мусор',
   'picture.despeckleHint': 'Удаляет крошки меньше этой площади.',
   'picture.removeFloating': 'Удалять висящие куски',
